@@ -1,2 +1,2 @@
-# cs-360
-All Labs and Final Project code
+Contains all Lab1 work
+Opening partitions and displaying information including extended partitions
