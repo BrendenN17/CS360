@@ -1,2 +1,2 @@
-# cs-360
-All Labs and Final Project code
+# Lab 3 - Threads
+Both files work although I have no idea why lol
