@@ -1,8 +1,19 @@
 /************* cd_ls_pwd.c file **************/
 
+/*** Summary ***/
+/*
+    For this function, we have 2 cases
+    When user cd with a parameter and one without
+    When user cd without a parameter, that means the user is trying to cd to the root
+    so just change the cwd to root
+    When user is trying to cd with a parameter, that parameter is where we want to move the cwd to
+    First, we get try to get the ino of the parameter to make sure the destination exists
+    If it does, verify that it is a DIR type before we can change the cwd
+    Once, it passes all the checks we can then change to cwd to the specified directory.
+*/
 int chdir(char *pathname)
 {
-  // READ Chapter 11.7.3 HOW TO chdir
+  /**** READ Chapter 11.7.3 HOW TO chdir ****/
   if (pathname[0] != '\0')//cd with 2nd argument
   {
     int ino = getino(pathname);// get inode # of pathname
@@ -27,10 +38,46 @@ int chdir(char *pathname)
   }
 }
 
+/*** Summary ***/
+/*
+    In this function, we have a loop that goes through information in the data block
+    Search for the ino number of wd, and also the ino number of the parent
+    We use the my_ino to get the name of the path i.e. dir1/dir2....
+    We use parent_ino to get a parent MINODE then recursively call rpwd(pip)
+    Repeat the process to go back and back until we get all the correct directories
+    Say we are in /dir1/dir2/dir3, this is where pwd is called
+    It will start in dir3, get the needed information (name...)
+    Recurse "back up" to dir2, get the needed informaton (name...)
+    Recurse "back up" to dir1, get the needed information (name...)
+    Recurse "back up" to root or "/", get the needed information (name...)
+    Here it will try to recurse but fails when we can't get the parent (already at root, no parent)
+    It will start to proceed with printing the "/dir1"
+    Then return to which the it print "/dir2"
+    Then back to the first call where it will print "/dir3"
+    We used strcat to concatenate all of this into "/dir1/dir2/dir3" which is then printed to console as the wd
+*/
 char *retPWD[NMINODE];//used to return cwd if not root
 char *rpwd(MINODE *wd)
 {
   if (wd == root) return;
+
+  for (int i = 0; i < n; i++)
+  {
+    if ((wd->dev != root->dev) && (wd->ino == 2))
+    {
+      for (int j = 0; j < NMTABLE; j++)
+      {
+        if (dev == mtable[j].dev)
+        {
+          wd = mtable[j].mptr;
+          dev = wd->dev;
+          break;
+        }
+      }
+      break;
+    }
+  }
+
   int my_ino, parent_ino, x = 0;
   char *my_name[NMINODE];
 
@@ -73,6 +120,11 @@ char *rpwd(MINODE *wd)
   MINODE *pip = iget(dev, parent_ino);
 
   // FROM pip->INODE.i_block[ ]: get my_name string by my_ino as LOCAL
+  /*
+      This function loops through the data block 
+      until it finds the data with the same ino number
+      then save that string into the parameter "my_name"
+  */
   findmyname(pip, my_ino, my_name);
 
   rpwd(pip);
@@ -81,6 +133,13 @@ char *rpwd(MINODE *wd)
   strcat(retPWD, my_name);
 }
 
+/*** Summary ***/
+/*
+    In this function, we check 2 cases
+    One where the current working directory is the root, and one where it is not
+    When the cwd is a root, we just need to print out "/" because that is the root
+    For when cwd is not the root we call rpwd(cwd)
+*/
 char *pwd(MINODE *wd)
 {
   strcpy(retPWD, "");
@@ -97,7 +156,17 @@ char *pwd(MINODE *wd)
   }
 }
 
-
+/*** Summary ***/
+/*
+    This is the ls that does all the printing of the information
+    It takes a MINODE and a char * as a parameter
+    The MINODE is used to print all the necessary details such as
+    Type (REG | LNK | DIR)
+    Print the r|w|x
+    Link counts, uid, gid
+    Time
+    and the "-->" for LNK type files.
+*/
 char *t1 = "xwrxwrxwr-------";
 char *t2 = "----------------";
 int ls_file(MINODE *mip, char *name)
@@ -122,6 +191,10 @@ int ls_file(MINODE *mip, char *name)
     {
       printf("%c", t1[i]);
     }
+    else if (S_ISLNK(mip->INODE.i_mode))
+    {
+      printf("%c", t1[i]);
+    }
     else
     {
       printf("%c", t2[i]);
@@ -137,9 +210,26 @@ int ls_file(MINODE *mip, char *name)
 
 
   printf("  %d", mip->INODE.i_size);
-  printf("  %s\n", name);
+  printf("  %s", name);
+
+  if (S_ISLNK(mip->INODE.i_mode))
+  {
+    char linkname[1024];
+    if (readlink(name, linkname, 1024) > 0)
+    {
+      printf(" -> %s", linkname);//print linked name
+    }
+  }
+
+  printf("\n");
 }
 
+/*** Summary ***/
+/*
+    In this function, all we did is have a loop that runs a block of data
+    Then in each section, call ls_file() on that section
+    Then move the pointer accordingly
+*/
 int ls_dir(MINODE *mip)
 {
   char buf[BLKSIZE], temp[256];
@@ -159,6 +249,7 @@ int ls_dir(MINODE *mip)
     //printf("[%d %s]  ", dp->inode, temp); // print [inode# name]
     mip = iget(dev, dp->inode);
     ls_file(mip, temp);
+    iput(mip);
 
     cp += dp->rec_len;
     dp = (DIR *)cp;
@@ -166,6 +257,17 @@ int ls_dir(MINODE *mip)
   printf("\n");
 }
 
+/*** Summary ***/
+/*
+    In this function, we made it check for 2 conditions
+    One where use ls without an argument, then we just ls the cwd
+    The other is where the user specifies the directory they want to ls, then we ls that directory
+    To ls a specified a specific directory, here are the steps:
+    pwd(cwd) to save for later use
+    switch to the specified directory
+    ls on the current directory
+    then pwd(back) to the original directory
+*/
 int ls(char *pathname)  
 {
   printf("ls %s\n", pathname);
@@ -177,11 +279,14 @@ int ls(char *pathname)
     chdir(pathname);//change to user specified directory
     ls_dir(running->cwd);//ls specified directory
     chdir(curdir);//change back to previous current directory
+
+    // int ino = getino(pathname);
+    // MINODE *mip = iget(dev, ino);
+    // ls_dir(mip);
   }
   else
   {
     ls_dir(running->cwd);//ls current directory
   }
 }
-
 
